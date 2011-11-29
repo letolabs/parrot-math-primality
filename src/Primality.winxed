@@ -1,7 +1,18 @@
+$load 'GMP/Integer.pbc';
+
+namespace GMP {
+    class Integer;
+}
+
 namespace Math
 {
     namespace Primality
     {
+        /* Internal optimization function to speed lookup of small primes.
+         *
+         * Less fast than Perl5 version due to lack of explicit indexing and need
+         * to instantiate small_primes every function call.
+         */
         function is_small_prime(var prime)
         {
             var small_primes = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31,
@@ -11,7 +22,7 @@ namespace Math
                                 167, 173, 179, 181, 191, 193, 197, 199,
                                 211, 223, 227, 229, 233, 237, 241, 251,
                                 257];
-        
+
             for (int i = 0; i < elements(small_primes); i++)
             {
                 if (small_primes[i] == prime)
@@ -21,6 +32,72 @@ namespace Math
             }
 
             return false;
+        }
+
+        /* is_strong_pseudoprime(n, b)
+         *
+         * Returns true if n is a base b strong pseudoprime, false otherwise. The variable
+         * n should be an Integer or BigInt PMC. Strong pseudoprimes are often called Miller-Rabin
+         * pseudoprimes.
+         *
+         * The default base of 2 is used if no base is given.
+         */
+        function is_strong_pseudoprime(var n, int b[optional], int has_b[opt_flag])
+        {
+            if (!has_b)
+                b = 2;
+
+            var bi = new GMP.Integer(b);
+            var ni = new GMP.Integer(n);
+
+            // Faster stuff if n is even.
+            int cmp = _check_two_and_even(ni);
+            if (cmp != 2)
+                return cmp;
+
+            var m = new GMP.Integer();
+            mpz_sub_ui(m, ni, 1);
+
+            // Given an odd number N find (s, d) such that N = d * 2^s + 1
+            int s = mpz_scan1(m, 1);
+            var d = new GMP.Integer();
+            mpz_tdiv_q_2exp(d, m, s);
+
+            var residue = new GMP.Integer();
+            mpz_powm(residue, bi, d, ni); // residue = (base ^ d) mod n
+
+            // If base ^ d = +/-1 (mod n), n is a strong pseudoprime
+            if (mpz_cmp_ui(residue, 1) == 0)
+                return true;
+            if (mpz_cmp(residue, m) == 0)
+                return true;
+
+            for (int i = 1; i <= s - 1; i++) {
+                // Successively square residue, n is a strong pseudoprime if
+                // any of these are congruent to -1 mod n
+                mpz_mul(residue, residue, residue);
+
+                var mod = new GMP.Integer();
+                mpz_mod(mod, residue, ni);
+                int cmp2 = mpz_cmp(mod, m);
+
+                if (cmp2 == 0)
+                    return true;
+            }
+
+            return false;
+        }
+
+        // Does some tests to see if n is 2, less than 2, or even to speed prime checking.
+        function _check_two_and_even(var n)
+        {
+            int cmp = mpz_cmp_ui(n, 2);
+
+            if (cmp == 0) return 1;
+            if (cmp < 0) return 0;
+            if (mpz_even_p(n)) return 0;
+
+            return 2;
         }
     }
 }
