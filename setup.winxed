@@ -1,69 +1,108 @@
 $include_const "iglobals.pasm";
-using extern "io_ops";
+$loadlib "io_ops";
 
 function main[main](argv) {
-  var parrot_math_primality = {
-    "name"              : 'parrot_math_primality',
-    "abstract"          : 'Primality Algorithms for Parrot Virtual Machine',
-    "description"       : 'Primality Algorithms for Parrot Virtual Machine',
-    "authority"         : 'http://github.com/letolabs',
-    "copyright_holder"  : 'Jonathan "Duke" Leto',
-    "keywords"          : ["parrot", "math", "primes", "primality", "pseudoprimes"],
-    "license_type"      : 'GPLv3',
-    "license_uri"       : 'http://github.com/letolabs/parrot_math_primality/blob/master/LICENSE',
-    "checkout_uri"      : 'git://github.com/letolabs/parrot-math-primality.git',
-    "browser_uri"       : 'git://github.com/letolabs/parrot-math-primality',
-    "project_uri"       : 'git://github.com/letolabs/parrot-math-primality',
-    "pir_winxed"        : {},
-    "pbc_pir"           : {},
-    "inst_lib"          : [],
-    "installable_pbc"   : {},
-    "include_winxed"    : {},
-    "manifest_includes" : ["README.md", "setup.winxed"]
-  };
+    var parrot_math_primality = {
+        "name"              : 'parrot_math_primality',
+        "abstract"          : 'Primality Algorithms for Parrot Virtual Machine',
+        "description"       : 'Primality Algorithms for Parrot Virtual Machine',
+        "authority"         : 'http://github.com/letolabs',
+        "copyright_holder"  : 'Jonathan "Duke" Leto',
+        "keywords"          : ["parrot", "math", "primes", "primality", "pseudoprimes"],
+        "license_type"      : 'GPLv3',
+        "license_uri"       : 'http://github.com/letolabs/parrot_math_primality/blob/master/LICENSE',
+        "checkout_uri"      : 'git://github.com/letolabs/parrot-math-primality.git',
+        "browser_uri"       : 'git://github.com/letolabs/parrot-math-primality',
+        "project_uri"       : 'git://github.com/letolabs/parrot-math-primality',
+        "pir_nqp-rx"        : {},
+        "pir_winxed"        : {},
+        "pbc_pbc"           : {},
+        "pbc_pir"           : {},
+        "pir_pir"           : {},
+        "winxed_debug"      : false,
+        "winxed_winxed"     : {},
+        "inst_lib"          : [],
+        "installable_pbc"   : {},
+        "include_winxed"    : {},
+        "manifest_includes" : ["CREDITS", "README.md", "setup.winxed"]
+    };
 
-  if (argv[1] == "test")
-    do_test();
+    if (argv[1] == "test")
+        do_test();
 
-  setup_stable_libraries(parrot_math_primality);
+    setup_stable_libraries(parrot_math_primality);
 
-  load_bytecode('distutils.pir');
-  using setup;
-  using register_step_before;
+    load_bytecode('distutils.pir');
+    load_bytecode('rosella/winxed.pir');
+    using setup;
+    using register_step_before;
+    using Rosella.Winxed.Distutils.winxed_setup;
 
-  register_step_before("build", check_dependencies);
-  register_step_before("clean", clean_build_dir);
+    register_step_before("build", check_dependencies);
+    register_step_before("clean", clean_build_dir);
 
-  argv.shift();
-  setup(argv, parrot_math_primality);
+    argv.shift();
+    winxed_setup();
+    setup(argv, parrot_math_primality);
 }
 
 function setup_stable_libraries(var parrot_math_primality) {
+    setup_winxed_lib(parrot_math_primality, "primality", [],
+        "Primality"
+    );
+}
+
+function setup_winxed_lib(var parrot_math_primality, string name, var includes, var files [slurpy],
+        var named [slurpy,named])
+{
+    setup_lib_internal(parrot_math_primality, name, "src/", includes, files, named);
+}
+
+function setup_lib_internal(var parrot_math_primality, string name, string prefix,
+        var includes, var files_raw, var named)
+{
+    var pir_files = [];
+
+    // Get a list of all files
+    var files = [];
+    for (string include in includes)
+        push(files, "src/include/" + include + ".winxed");
+    for (string file in files_raw)
+        push(files, prefix + file + ".winxed");
+
+    string winxed_master = "parrot-math-primality/" + name + ".winxed";
+    string pbc_lib_name = "parrot-math-primality/" + name + ".pbc";
+    string pir_lib_name = "parrot-math-primality/" + name + ".pir";
+    parrot_math_primality["winxed_winxed"][winxed_master] = files;
+    parrot_math_primality["pir_winxed"][pir_lib_name] = winxed_master;
+    parrot_math_primality["pbc_pir"][pbc_lib_name] = pir_lib_name;
+    parrot_math_primality["inst_lib"].push(pbc_lib_name);
+    parrot_math_primality["manifest_includes"].push(pir_lib_name);
 }
 
 function do_test() {
-  int result;
-  string cmd = "parrot-nqp t/harness";
-  ${ spawnw result, cmd };
-  ${ exit result };
+    int result;
+    string cmd = "parrot-nqp t/harness";
+    ${ spawnw result, cmd };
+    ${ exit result };
 }
 
 function check_dependencies() {
-  var config = getinterp()[IGLOBALS_CONFIG_HASH];
-  // Check if Parrot is > 3.5.0
-  int maj = config['MAJOR'];
-  int min = config['MINOR'];
-  if (maj < 3 || (maj == 3 && min < 5)) {
-    die("You need at least Parrot 3.5.0 to use parrot_math_primality");
-  }
-  // Check if parrot-gmp is present
-  int has_parrot_gmp =  1 ; // TODO
-  if (!has_parrot_gmp) {
-    die("You need to have Parrot configured with parrot-gmp to use parrot_math_primality");
-  }
+    var config = getinterp()[IGLOBALS_CONFIG_HASH];
+    // Check if Parrot is > 3.5.0
+    int maj = config['MAJOR'];
+    int min = config['MINOR'];
+    if (maj < 3 || (maj == 3 && min < 5)) {
+        die("You need at least Parrot 3.5.0 to use parrot_math_primality");
+    }
+    // Check if parrot-gmp is present
+    int has_parrot_gmp =  1 ; // TODO
+    if (!has_parrot_gmp) {
+        die("You need to have Parrot configured with parrot-gmp to use parrot_math_primality");
+    }
 }
 
 function clean_build_dir() {
-  var config = getinterp()[IGLOBALS_CONFIG_HASH];
-  unlink("src/Math/Primality.pbc");
+    var config = getinterp()[IGLOBALS_CONFIG_HASH];
+    unlink("src/Math/Primality.pbc");
 }
