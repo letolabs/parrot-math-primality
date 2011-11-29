@@ -86,6 +86,59 @@ class Test_parrot_math_primality {
         for(int i = 0; i < elements(spsp); i++)
             self.assert.is_true(is_strong_pseudoprime(spsp[i]), spsp[i]);
     }
+
+    function test_is_strong_lucas_pseudoprime() {
+        using Math.Primality._check_two_and_even;
+        using Math.Primality._find_s_d;
+        using Math.Primality._find_dqp_selfridge;
+        using Math.Primality.is_strong_lucas_pseudoprime;
+
+        self.assert.is_true(is_strong_lucas_pseudoprime(2), "is_strong_lucas_pseudoprime should return true for 2");
+
+        self.assert.is_false(is_strong_lucas_pseudoprime(9), 'is_strong_lucas_pseudoprime deals with perfect squares');
+        self.assert.is_false(is_strong_lucas_pseudoprime(16), 'is_strong_lucas_pseudoprime deals with perfect squares');
+        self.assert.is_false(is_strong_lucas_pseudoprime(100), 'is_strong_lucas_pseudoprime deals with perfect squares');
+
+        self.assert.equal(_check_two_and_even(new GMP.Integer(2)), 1, "_check_two_and_even(2) should return 1");
+        self.assert.equal(_check_two_and_even(new GMP.Integer(20)), 0, "_check_two_and_even(20) should return 0");
+        self.assert.equal(_check_two_and_even(new GMP.Integer(1)), 0, "_check_two_and_even(1) should return 0");
+
+        // Check first five strong Lucas pseudoprimes.
+        self.assert.is_true(is_strong_lucas_pseudoprime(5459),
+            "is_strong_lucas_pseudoprime should return true for the first lucas pseudoprime");
+        self.assert.is_true(is_strong_lucas_pseudoprime(5777),
+            "is_strong_lucas_pseudoprime should return true for the second lucas pseudoprime");
+        self.assert.is_true(is_strong_lucas_pseudoprime(10877),
+            "is_strong_lucas_pseudoprime should return true for the third lucas pseudoprime");
+        self.assert.is_true(is_strong_lucas_pseudoprime(16109),
+            "is_strong_lucas_pseudoprime should return true for the fourth lucas pseudoprime");
+        self.assert.is_true(is_strong_lucas_pseudoprime(18971),
+            "is_strong_lucas_pseudoprime should return true for the fifth lucas pseudoprime");
+
+        // Check random non-prime numbers.
+        self.assert.is_false(is_strong_lucas_pseudoprime(5455),
+            "is_strong_lucas_pseudoprime should not return true for a composite and non psuedoprime");
+        self.assert.is_false(is_strong_lucas_pseudoprime(5781),
+            "is_strong_lucas_pseudoprime should not return true for a composite and non psuedoprime");
+
+        // Test internal methods.
+        self.assert.equal(_find_dqp_selfridge(new GMP.Integer(1993)), [5, 1, -1],
+            "_find_dpq_selfridge should return (5, 1, -1) for 1993");
+        self.assert.equal(_find_dqp_selfridge(new GMP.Integer(1759)), [-11, 1, 3],
+            "_find_dpq_selfridge should return (-11, 1, 3) for 1759");
+
+        var sd = _find_s_d(new GMP.Integer(7));
+        self.assert.equal(sd[0], 1, "_find_s_d should return 7 = 3 * 2^1 + 1");
+        self.assert.equal(sd[1], new GMP.Integer(3), "_find_s_d should return 7 = 3 * 2^1 + 1");
+
+        sd = _find_s_d(new GMP.Integer(17));
+        self.assert.equal(sd[0], 4, "_find_s_d should return 17 = 1 * 2^4 + 1");
+        self.assert.equal(sd[1], new GMP.Integer(1), "_find_s_d should return 17 = 1 * 2^4 + 1");
+
+        sd = _find_s_d(new GMP.Integer(53525));
+        self.assert.equal(sd[0], 2, "_find_s_d should return 53525 = 13381 * 2^2 + 1");
+        self.assert.equal(sd[1], new GMP.Integer(13381), "_find_s_d should return 53525 = 13381 * 2^2 + 1");
+    }
 }
 
 function main[main]() {
