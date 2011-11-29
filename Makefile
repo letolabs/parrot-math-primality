@@ -16,7 +16,8 @@ Rosella/Makefile:
 .PHONY: clean test
 clean:
 	winxed setup.winxed clean
+	$(MAKE) -C Rosella clean
 	rm -f rosella
 
-test: lib
+test: build
 	winxed setup.winxed test
