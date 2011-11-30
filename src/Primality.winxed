@@ -59,9 +59,9 @@ namespace Math
             mpz_sub_ui(m, ni, 1);
 
             // Given an odd number N find (s, d) such that N = d * 2^s + 1
-            int s = mpz_scan1(m, 1);
-            var d = new GMP.Integer();
-            mpz_tdiv_q_2exp(d, m, s);
+            var s_d = _find_s_d(m);
+            int s = s_d[0];
+            var d = s_d[1];
 
             var residue = new GMP.Integer();
             mpz_powm(residue, bi, d, ni); // residue = (base ^ d) mod n
@@ -98,6 +98,174 @@ namespace Math
             if (mpz_even_p(n)) return 0;
 
             return 2;
+        }
+
+        // Given an odd number N find (s, d) such that N = d * 2^s + 1
+        function _find_s_d(var m)
+        {
+            int s = mpz_scan1(m, 1);
+            var d = new GMP.Integer();
+            mpz_tdiv_q_2exp(d, m, s);
+
+            return [s, d];
+        }
+
+        /* is_strong_lucas_pseudoprime(n)
+         *
+         * Returns true if n is a strong Lucas-Selfridge pseudoprime, false otherwise. The variable
+         * n should be an Integer or BigInt PMC.
+         */
+        function is_strong_lucas_pseudoprime(var n)
+        {
+            n = new GMP.Integer(n);
+
+            // Handle n < 3 and even n.
+            int cmp = _check_two_and_even(n);
+            if (cmp != 2)
+                return cmp;
+
+            // Handle perfect squares.
+            if (mpz_perfect_square_p(n))
+                return false;
+
+            // Determine Selfridge parameters D, P, and Q.
+            var sp = _find_dqp_selfridge(n);
+            if (!sp)
+                return false; // _find_dqp_selfridge found a factor of N.
+            int D = sp[0];
+            int P = sp[1];
+            int Q = sp[2];
+
+            var m = new GMP.Integer();
+            mpz_add_ui(m, n, 1); // m = n + 1
+
+            // Find s and d.
+            var sd = _find_s_d(m);
+            int s = sd[0];
+            var d = sd[1];
+
+            // Compute U_d and V_d.
+            // Initialize U, V, U_2m, and V_2m.
+            var U = new GMP.Integer(1);
+            var V = new GMP.Integer(P);
+            var U_2m = new GMP.Integer(1);
+            var V_2m = new GMP.Integer(P);
+            // Initialize Q values.
+            var Q_m = new GMP.Integer(Q);
+            var Q2_m = new GMP.Integer(2 * Q); // Actually 2Q_m, but variable names.
+            var Qkd = new GMP.Integer(Q);
+            // Start doubling the indicies!
+            int dbits = mpz_sizeinbase(d, 2);
+            for (int i = 1; i < dbits; i++) { // since d is odd, the lsb of d is 1 so we skip it.
+                // U_2m = U_m * V_m (mod N)
+                mpz_mul(U_2m, U_2m, V_2m);
+                mpz_mod(U_2m, U_2m, n);
+
+                // V_2m = V_m * V_m - 2 * Q^m (mod N)
+                mpz_mul(V_2m, V_2m, V_2m); // V_2m = V_2m * V_2m
+                mpz_sub(V_2m, V_2m, Q2_m); // V_2m = V_2m - 2Q_m
+                mpz_mod(V_2m, V_2m, n); // V_2m = V_2m mod N
+
+                // Calculate powers of Q for V_2m and Q^d (used later)
+                // 2Q_m = 2 * Q_m * Q_m (mod N)
+                mpz_mul(Q_m, Q_m, Q_m); # Q_m = Q_m * Q_m
+                mpz_mod(Q_m, Q_m, n); # Q_m = Q_m mod N
+                mpz_mul_2exp(Q2_m, Q_m, 1); # 2Q_m = Q_m * 2
+
+                if (mpz_tstbit(d, i)) { // if bit i of d is set
+                    // Add some indicies
+                    // Initialize temp vars.
+                    var T1 = new GMP.Integer();
+                    var T2 = new GMP.Integer();
+                    var T3 = new GMP.Integer();
+                    var T4 = new GMP.Integer();
+
+                    // U_(m+n) = (U_m * V_n + U_n * V_m) / 2
+                    // V_(m+n) = (V_m * V_n + D * U_m * U_n) / 2
+                    mpz_mul(T1, U_2m, V); // T1 = U_2m * V
+                    mpz_mul(T2, U, V_2m); // T2 = U * V_2m
+                    mpz_mul(T3, V_2m, V); // T3 = V_2m * V
+                    mpz_mul(T4, U_2m, U); // T4 = U_2m * U
+                    mpz_mul_si(T4, T4, D); // T4 = T4 * D = U_2m * U * D
+                    mpz_add(U, T1, T2); // U = T1 + T2 = U_2m * V - U * V_2m
+                    if (mpz_odd_p(U)) { // if U is odd
+                        mpz_add(U, U, n); // U = U + n
+                    }
+                    mpz_fdiv_q_2exp(U, U, 1); // U = floor(U / 2)
+                    mpz_add(V, T3, T4); // V = T3 + T4 = V_2m * V + U_2m * U * D
+                    if (mpz_odd_p(V)) { // if V is odd
+                      mpz_add(V, V, n); // V = V + n
+                    }
+                    mpz_fdiv_q_2exp(V, V, 1); // V = floor(V / 2)
+                    mpz_mod(U, U, n); // U = U mod N
+                    mpz_mod(V, V, n); // V = V mod N
+
+                    // Calculate Q^d for later.
+                    mpz_mul(Qkd, Qkd, Q_m); // Qkd = Qkd * Q_m
+                    mpz_mod(Qkd, Qkd, n); // Qkd = Qkd mod N
+                }
+            }
+
+            // If U_d or V_d = 0 mod N, then N is prime or a strong lucas pseudoprime.
+            if (mpz_sgn(U) == 0 || mpz_sgn(V) == 0)
+                return true;
+
+            // Since we're still here, comput V_2d, V_4d, V_8d, ..., V_{2^(s-1)*d}.
+            // Initialize 2Qkd
+            var Q2kd = new GMP.Integer();
+            mpz_mul_2exp(Q2kd, Qkd, 1); // 2Qkd = 2 * Qkd
+
+            // V_2m = V_m * V_m - 2 * Q^m (mod N)
+            for (int r = 1; r < s; r++) {
+                mpz_mul(V, V, V); // V = V * V;
+                mpz_sub(V, V, Q2kd); // V = V - 2Qkd
+                mpz_mod(V, V, n); // V = V mod N
+                // If V = 0 mod N then N is a prime or a strong Lucas pseudoprime
+                if(mpz_sgn(V) == 0)
+                    return true;
+
+                // Calculate Q ^(d * 2^r) for next r (unless on final iteration)
+                if (r < (s - 1)) {
+                    mpz_mul(Qkd, Qkd, Qkd); // Qkd = Qkd * Qkd
+                    mpz_mod(Qkd, Qkd, n); // Qkd = Qkd mod N
+                    mpz_mul_2exp(Q2kd, Qkd, 1); // 2Qkd = 2 * Qkd
+                }
+            }
+
+            // N is definitely composite now.
+            return false;
+        }
+
+        // Selfridge's method for finding the tuple (D,P,Q) for is_strong_lucas_pseudoprime.
+        function _find_dqp_selfridge(n)
+        {
+            int d = 5;
+            int sign = 1;
+            int wd = 0;
+            var gcd = new GMP.Integer();
+
+            // Determine d.
+            while (1) {
+                wd = d * sign;
+                int abswd;
+                ${ abs abswd, wd };
+
+                mpz_gcd_ui(gcd, n, abswd);
+                if (gcd > 1 && mpz_cmp(n, gcd) > 0)
+                    return false;
+
+                int j = mpz_jacobi(new GMP.Integer(wd), n);
+                if (j == -1)
+                    break;
+
+                // Didn't find d, increment and swap sign.
+                d += 2;
+                sign = -sign;
+            }
+
+            int p = 1;
+            int q = (1 - wd) / 4;
+            return [ wd, p, q ];
         }
     }
 }
