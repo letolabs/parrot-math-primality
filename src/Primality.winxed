@@ -13,23 +13,18 @@ namespace Math
          * Less fast than Perl5 version due to lack of explicit indexing and need
          * to instantiate small_primes every function call.
          */
-        function is_small_prime(var prime)
+        function is_small_prime(int prime)
         {
             var small_primes = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31,
                                 37, 41, 43, 47, 53, 59, 61, 67, 71, 73,
                                 79, 83, 89, 97, 101, 103, 107, 109, 113,
                                 127, 131, 137, 139, 149, 151, 157, 163,
                                 167, 173, 179, 181, 191, 193, 197, 199,
-                                211, 223, 227, 229, 233, 237, 241, 251,
-                                257];
+                                211, 223, 227, 229, 233, 239, 241, 251, 257];
 
             for (int i = 0; i < elements(small_primes); i++)
-            {
-                if (small_primes[i] == prime)
+                if (prime == small_primes[i])
                     return true;
-                else if (small_primes[i] > prime)
-                    return false;
-            }
 
             return false;
         }
@@ -48,15 +43,16 @@ namespace Math
                 b = 2;
 
             var bi = new GMP.Integer(b);
-            var ni = new GMP.Integer(n);
+            if(!(n instanceof GMP.Integer))
+                n = new GMP.Integer(n);
 
             // Faster stuff if n is even.
-            int cmp = _check_two_and_even(ni);
+            int cmp = _check_two_and_even(n);
             if (cmp != 2)
                 return cmp;
 
             var m = new GMP.Integer();
-            mpz_sub_ui(m, ni, 1);
+            mpz_sub_ui(m, n, 1);
 
             // Given an odd number N find (s, d) such that N = d * 2^s + 1
             var s_d = _find_s_d(m);
@@ -64,7 +60,7 @@ namespace Math
             var d = s_d[1];
 
             var residue = new GMP.Integer();
-            mpz_powm(residue, bi, d, ni); // residue = (base ^ d) mod n
+            mpz_powm(residue, bi, d, n); // residue = (base ^ d) mod n
 
             // If base ^ d = +/-1 (mod n), n is a strong pseudoprime
             if (mpz_cmp_ui(residue, 1) == 0)
@@ -78,7 +74,7 @@ namespace Math
                 mpz_mul(residue, residue, residue);
 
                 var mod = new GMP.Integer();
-                mpz_mod(mod, residue, ni);
+                mpz_mod(mod, residue, n);
                 int cmp2 = mpz_cmp(mod, m);
 
                 if (cmp2 == 0)
@@ -117,7 +113,8 @@ namespace Math
          */
         function is_strong_lucas_pseudoprime(var n)
         {
-            n = new GMP.Integer(n);
+            if(!(n instanceof GMP.Integer))
+                n = new GMP.Integer(n);
 
             // Handle n < 3 and even n.
             int cmp = _check_two_and_even(n);
@@ -237,7 +234,7 @@ namespace Math
         }
 
         // Selfridge's method for finding the tuple (D,P,Q) for is_strong_lucas_pseudoprime.
-        function _find_dqp_selfridge(n)
+        function _find_dqp_selfridge(var n)
         {
             int d = 5;
             int sign = 1;
@@ -266,6 +263,145 @@ namespace Math
             int p = 1;
             int q = (1 - wd) / 4;
             return [ wd, p, q ];
+        }
+
+        /* is_prime(n)
+         *
+         * Returns 2 if n is definitely prime, 1 is n is a probable prime, 0 if n is composite.
+         *
+         * is_prime() is implemented using the BPSW algorithim which is a combination of two probable-prime
+         * algorithims, the strong Miller-Rabin test and the strong Lucas-Selfridge test. While no
+         * psuedoprime has been found for N < 10^15, this does not mean there is not a pseudoprime. A
+         * possible improvement would be to instead implement the AKS test which runs in quadratic time and
+         * is deterministic with no false-positives.
+         */
+        function is_prime(var n)
+        {
+            if(!(n instanceof GMP.Integer))
+                n = new GMP.Integer(n);
+
+            if (mpz_cmp_ui(n, 2) == -1)
+                return 0;
+
+            if (mpz_cmp_ui(n, 257) == -1)
+                return is_small_prime(n) ? 1 : 0;
+            else if (mpz_cmp(n, new GMP.Integer("9080191")) == -1) {
+                if (!is_strong_pseudoprime(n, 31))
+                    return 0;
+                if (!is_strong_pseudoprime(n, 73))
+                    return 0;
+                return 2;
+            }
+            else if (mpz_cmp(n, new GMP.Integer("4759123141")) == -1) {
+                if (!is_strong_pseudoprime(n, 2))
+                    return 0;
+                if (!is_strong_pseudoprime(n, 7))
+                    return 0;
+                if (!is_strong_pseudoprime(n, 61))
+                    return 0;
+                return 2;
+            }
+
+            if(is_strong_pseudoprime(n, 2) && is_strong_lucas_pseudoprime(n))
+                return 1;
+            else
+                return 0;
+        }
+
+        /* next_prime(n)
+         *
+         * Given a number, produces the next prime number.
+         *
+         * This is accomplished by checking every odd number to find a probable prime.
+         */
+        function next_prime(var n)
+        {
+            if(!(n instanceof GMP.Integer))
+                n = new GMP.Integer(n);
+
+            int cmp = mpz_cmp_ui(n, 2);
+            if (cmp < 0)
+                return new GMP.Integer(2);
+
+            if (mpz_odd_p(n))
+                mpz_add_ui(n, n, 2);
+            else
+                mpz_add_ui(n, n, 1);
+
+            // n is now the next odd #.
+            while (1) {
+                if(is_prime(n))
+                    return n;
+
+                mpz_add_ui(n, n, 2);
+            }
+        }
+
+        /* prev_prime(n)
+         *
+         * Given a number, produces the previous prime number.
+         *
+         * This is accomplished by checking every odd number to find a probable prime.
+         */
+        function prev_prime(var n)
+        {
+            if(!(n instanceof GMP.Integer))
+                n = new GMP.Integer(n);
+
+            int cmp = mpz_cmp_ui(n, 3);
+            if (cmp == 0)
+                return new GMP.Integer(2);
+            else if (cmp < 0)
+                return null;
+
+            if (mpz_odd_p(n))
+                mpz_sub_ui(n, n, 2);
+            else
+                mpz_sub_ui(n, n, 1);
+
+            // n is now the previous odd #.
+            while (1) {
+                if(is_prime(n))
+                    return n;
+
+                mpz_sub_ui(n, n, 2);
+            }
+        }
+
+        /* prime_count_optimized(x)
+         *
+         * Computes the number of primes pi(x) in the interval (1, x] using the fast
+         * Meissel, Lehmer, Lagarias, Miller, Odlyzko method.
+         */
+        function prime_count_optimized(int x)
+        {
+            // phi(x, a) is the partial sieve function, counting numbers <= x with all
+            // prime factors greater than p_a, the ath prime number.
+            // P_k(x, a) is the count of numbers <= x with exactly k prime factors, all
+            // larger than p_a.
+
+            // y is some integer x^(1/3) <= y <= x^(1/2)
+            // a is pi(y)
+
+            // pi(x) = phi(x, a) + a - 1 - P_2(x, a)
+
+        }
+
+        /* prime_count(x)
+         *
+         * Computes the number of primes pi(x) in the interval (1, x] using a simple for loop.
+         * Prime checking is provided by is_prime(n).
+         */
+        function prime_count(var x)
+        {
+            int primes = 0;
+            x = new GMP.Integer(x);
+
+            for (var i = new GMP.Integer(2); mpz_cmp(i, x) <= 0; mpz_add_ui(i, i, 1))
+                if (is_prime(i))
+                    primes++;
+
+            return primes;
         }
     }
 }
